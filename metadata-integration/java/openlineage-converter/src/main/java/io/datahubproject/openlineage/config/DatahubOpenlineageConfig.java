@@ -32,6 +32,7 @@ public class DatahubOpenlineageConfig {
   // This is disabled until column level patch support won't be fixed in GMS
   @Builder.Default private final boolean usePatch = true;
   @Builder.Default private String hivePlatformAlias = "hive";
+  @Builder.Default private String icebergPlatformAlias = "iceberg";
   @Builder.Default private Map<String, String> urnAliases = new HashMap<>();
   @Builder.Default private final boolean disableSymlinkResolution = false;
   @Builder.Default private final boolean lowerCaseDatasetUrns = false;

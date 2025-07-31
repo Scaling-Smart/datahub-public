@@ -190,6 +190,33 @@ public class PlanUtils {
         .build();
   }
 
+  public static OpenLineage.ParentRunFacet parentRunFacet(
+      UUID parentRunId,
+      String parentJobName,
+      String parentJobNamespace,
+      UUID rootParentRunId,
+      String rootParentJobName,
+      String rootParentJobNamespace) {
+    return new OpenLineage(Versions.OPEN_LINEAGE_PRODUCER_URI)
+        .newParentRunFacetBuilder()
+        .run(new OpenLineage.ParentRunFacetRunBuilder().runId(parentRunId).build())
+        .job(
+            new OpenLineage.ParentRunFacetJobBuilder()
+                .name(NameNormalizer.normalize(parentJobName))
+                .namespace(parentJobNamespace)
+                .build())
+        .root(
+            new OpenLineage.ParentRunFacetRootBuilder()
+                .run(new OpenLineage.RootRunBuilder().runId(rootParentRunId).build())
+                .job(
+                    new OpenLineage.RootJobBuilder()
+                        .namespace(rootParentJobNamespace)
+                        .name(rootParentJobName)
+                        .build())
+                .build())
+        .build();
+  }
+
   public static Path getDirectoryPathOl(Path p, Configuration hadoopConf) {
     try {
       if (p.getFileSystem(hadoopConf).getFileStatus(p).isFile()) {

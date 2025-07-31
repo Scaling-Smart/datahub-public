@@ -104,6 +104,12 @@ public class OpenLineageToDataHub {
 
     String namespace = dataset.getNamespace();
     String datasetName = dataset.getName();
+
+    if (dataset.getFacets() != null
+        && dataset.getFacets().getCatalog() != null
+        && "iceberg".equalsIgnoreCase(dataset.getFacets().getCatalog().getFramework())) {
+      namespace = mappingConfig.getIcebergPlatformAlias();
+    }
     Optional<DatasetUrn> datahubUrn;
     if (dataset.getFacets() != null
         && dataset.getFacets().getSymlinks() != null
@@ -115,7 +121,11 @@ public class OpenLineageToDataHub {
         if (symlink.getType().equals("TABLE")) {
           // Before OpenLineage 0.17.1 the namespace started with "aws:glue:" and after that it was
           // changed to :arn:aws:glue:"
-          if (symlink.getNamespace().startsWith("aws:glue:")
+          if (dataset.getFacets() != null
+              && dataset.getFacets().getCatalog() != null
+              && "iceberg".equalsIgnoreCase(dataset.getFacets().getCatalog().getFramework())) {
+            namespace = mappingConfig.getIcebergPlatformAlias();
+          } else if (symlink.getNamespace().startsWith("aws:glue:")
               || symlink.getNamespace().startsWith("arn:aws:glue:")) {
             namespace = "glue";
           } else {

@@ -75,7 +75,7 @@ public class DatahubSparkListener extends SparkListener {
   private boolean isDisabled;
 
   public DatahubSparkListener() throws URISyntaxException {
-    listener = new OpenLineageSparkListener();
+    listener = new OpenLineageSparkListener(new SparkConf());
   }
 
   private static SparkAppContext getSparkAppContext(
