@@ -14,6 +14,7 @@ from sqlalchemy.engine import Engine
 
 import datahub.emitter.mce_builder as builder
 from datahub.configuration.time_window_config import get_time_bucket
+from datahub.emitter.sql_parsing_builder import SqlParsingBuilder
 from datahub.ingestion.api.decorators import (
     SourceCapability,
     SupportStatus,
@@ -28,6 +29,10 @@ from datahub.ingestion.source.sql.trino import TrinoConfig
 from datahub.ingestion.source.usage.usage_common import (
     BaseUsageConfig,
     GenericAggregatedDataset,
+)
+from datahub.sql_parsing.sqlglot_lineage import (
+    create_schema_resolver,
+    sqlglot_lineage,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,12 +52,20 @@ SELECT DISTINCT usr,
         end_time
 FROM {audit_catalog}.{audit_schema}.completed_queries
 WHERE 1 = 1
-AND query_type  = 'SELECT'
+AND query_type  in ('SELECT','INSERT','UPDATE','DELETE','CREATE_TABLE_AS_SELECT','CREATE TABLE AS SELECT')
 AND create_time >= timestamp '{start_time}'
 AND end_time < timestamp '{end_time}'
 AND query_state  = 'FINISHED'
 ORDER BY end_time desc
 """.strip()
+
+LINEAGE_QUERY_TYPES = {
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "CREATE_TABLE_AS_SELECT",
+    "CREATE TABLE AS SELECT",
+}
 
 TrinoTableRef = str
 AggregatedDataset = GenericAggregatedDataset[TrinoTableRef]
@@ -143,11 +156,58 @@ class TrinoUsageSource(Source):
             return
 
         joined_access_event = self._get_joined_access_event(access_events)
+
+        # Build lineage for write operations
+        sql_parser = SqlParsingBuilder(
+            generate_lineage=True,
+            generate_usage_statistics=False,
+            generate_operations=False,
+        )
+        schema_resolver = create_schema_resolver(
+            platform="trino",
+            env=self.config.env,
+            platform_instance=self.config.platform_instance,
+            graph=None,
+            schema_aware=False,
+        )
+
+        for event in joined_access_event:
+            if (
+                event.query
+                and event.query_type
+                and event.query_type.upper() in LINEAGE_QUERY_TYPES
+            ):
+                try:
+                    result = sqlglot_lineage(
+                        event.query,
+                        schema_resolver=schema_resolver,
+                        default_db=event.catalog or self.config.database,
+                        default_schema=event.schema_name,
+                        override_dialect="trino",
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to parse query {event.query}: {e}")
+                else:
+                    username = event.usr or "unknown"
+                    if "@" not in parseaddr(username)[1]:
+                        username = f"{username}@{self.config.email_domain}"
+                    user_urn = builder.make_user_urn(username)
+                    for wu in sql_parser.process_sql_parsing_result(
+                        result,
+                        query=event.query,
+                        query_timestamp=event.starttime,
+                        user=user_urn,
+                    ):
+                        yield wu
+
         aggregated_info = self._aggregate_access_events(joined_access_event)
 
         for time_bucket in aggregated_info.values():
             for aggregate in time_bucket.values():
                 yield self._make_usage_stat(aggregate)
+
+        # emit lineage workunits
+        yield from sql_parser.gen_workunits()
 
     def _make_usage_query(self) -> str:
         return trino_usage_sql_comment.format(
@@ -215,14 +275,12 @@ class TrinoUsageSource(Source):
                 event_dict.get("end_time")
             )
 
-            if not event_dict["accessed_metadata"]:
-                self.report.num_joined_access_events_skipped += 1
-                logging.info("Field accessed_metadata is empty. Skipping ....")
-                continue
-
-            event_dict["accessed_metadata"] = json.loads(
-                event_dict["accessed_metadata"]
-            )
+            if event_dict.get("accessed_metadata"):
+                event_dict["accessed_metadata"] = json.loads(
+                    event_dict["accessed_metadata"]
+                )
+            else:
+                event_dict["accessed_metadata"] = []
 
             if not event_dict.get("usr"):
                 self.report.num_joined_access_events_skipped += 1
