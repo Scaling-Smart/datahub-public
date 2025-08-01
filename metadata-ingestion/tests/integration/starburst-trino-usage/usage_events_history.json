@@ -18,6 +18,16 @@
     "end_time" : "2021-10-14 09:40:55.214000 UTC"
   },
   {
+    "usr" : "writer",
+    "query" : "create table testcatalog.testschema.new_table as select * from testcatalog.testschema.testtable",
+    "catalog" : "testcatalog",
+    "schema" : "testschema",
+    "query_type" : "CREATE_TABLE_AS_SELECT",
+    "accessed_metadata" : null,
+    "create_time" : "2021-10-14 09:41:00.108000 UTC",
+    "end_time" : "2021-10-14 09:41:05.214000 UTC"
+  },
+  {
     "usr" : "test-name",
     "query" : "select * from testcatalog.testschema.testtable limit 100",
     "catalog" : null,
